@@ -3,8 +3,9 @@ Uses AWS Greengrass and Raspberry Pi to demonstrate concepts for an LED light sh
 Only demos ws2811 LEDs
 
 ## External Libraries
-rpi_ws281x
-lightshowpi
+Install these libraries first
+rpi_ws281x (based on commit 7f08d491f0ae22c20a63394df6a5c8ebe80c0be4)
+lightshowpi (based on commit 567881439adfcc5dad5c7150fefaef249942114f)
 
 ## Hardware
 * RPi model 3
@@ -20,4 +21,13 @@ lightshowpi
 * resistors
 * LEDs
 * T breakout board with 40 pin RPi GPIO cable
- 
+
+## Directory Structure
+* /tutorials
+** get started with RPi GPIO
+* /src
+** files for use with lightshowpi
+* /examples
+** example test file for running rpi_ws281x
+* /config
+** config for lightshowpi
