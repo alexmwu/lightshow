@@ -6,8 +6,7 @@ and checks needed by any script
 """
 
 from time import sleep
-from raspledstrip.ledstrip import *
-from raspledstrip.animation import *
+from neopixel import *
 
 import os.path
 import sys
@@ -39,7 +38,7 @@ sudo chmod a+rw /dev/spidev0.0
 
 # good configurations for ws2811 and SPI
 # LED strip configuration:
-LED_COUNT      = 50 	 # Number of LED pixels.
+LED_COUNT      = 49      # Number of LED pixels.
 LED_PIN        = 10      # GPIO pin connected to the pixels (10 uses SPI /dev/spidev0.0).
 LED_FREQ_HZ    = 800000  # LED signal frequency in hertz (usually 800khz)
 LED_DMA        = 5       # DMA channel to use for generating signal (try 5)

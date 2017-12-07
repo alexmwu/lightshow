@@ -23,8 +23,9 @@ import argparse
 import RPi.GPIO as GPIO
 from AWSIoTPythonSDK.core.greengrass.discovery.providers import DiscoveryInfoProvider
 from AWSIoTPythonSDK.core.protocol.connection.cores import ProgressiveBackOffCore
-from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
+from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient, AWSIoTMQTTShadowClient
 from AWSIoTPythonSDK.exception.AWSIoTExceptions import DiscoveryInvalidRequestException
+import traceback
 
 # General message notification callback
 def customOnMessage(message):
@@ -46,9 +47,9 @@ parser.add_argument("-c", "--cert", action="store", dest="certificatePath", help
 parser.add_argument("-k", "--key", action="store", dest="privateKeyPath", help="Private key file path")
 parser.add_argument("-n", "--thingName", action="store", dest="thingName", default="None", help="Targeted thing name")
 #parser.add_argument("-t", "--topic", action="store", dest="topic", default="update", help="Targeted topic")
-parser.add_argument("-b", "--buttons", nargs='+', required=True, action="store", dest="buttons", default="20 21", help="Pins to buttons")
+parser.add_argument("-b", "--buttons", nargs='+', type=int, action="store", dest="buttons", default=[20, 21], help="Pins to buttons")
 parser.add_argument("-l", "--led", action="store", type=int, dest="led", default="26", help="Pin to LED")
-parser.add_argument("-u", "--users", nargs='+', required=True, action="store", dest="users", default="wualex jeff", help="User mapping to buttons")
+parser.add_argument("-u", "--users", nargs='+', action="store", dest="users", default=['wualex', 'jeff'], help="User mapping to buttons")
 
 args = parser.parse_args()
 host = args.host
@@ -58,7 +59,10 @@ privateKeyPath = args.privateKeyPath
 clientId = args.thingName
 thingName = args.thingName
 #topic = args.topic
-buttons = int(item) for item in buttons
+print args.buttons
+print type(args.buttons)
+print type(args.buttons[0])
+buttons = args.buttons
 users = args.users
 led = int(args.led)
 UPDATE_TOPIC = 'update'
@@ -136,13 +140,25 @@ myAWSIoTMQTTClient = AWSIoTMQTTClient(clientId)
 myAWSIoTMQTTClient.configureCredentials(groupCA, privateKeyPath, certificatePath)
 myAWSIoTMQTTClient.onMessage = customOnMessage
 
+# Init AWSIoTMQTTShadowClient
+myAWSIoTMQTTShadowClient = AWSIoTMQTTShadowClient(clientId)
+myAWSIoTMQTTShadowClient.configureCredentials(rootCAPath, privateKeyPath, certificatePath)
+
+# AWSIoTMQTTShadowClient configuration
+myAWSIoTMQTTShadowClient.configureAutoReconnectBackoffTime(1, 32, 20)
+myAWSIoTMQTTShadowClient.configureConnectDisconnectTimeout(10)  # 10 sec
+myAWSIoTMQTTShadowClient.configureMQTTOperationTimeout(5)  # 5 sec
+
 connected = False
 for connectivityInfo in coreInfo.connectivityInfoList:
     currentHost = connectivityInfo.host
     currentPort = connectivityInfo.port
     print("Trying to connect to core at %s:%d" % (currentHost, currentPort))
     myAWSIoTMQTTClient.configureEndpoint(currentHost, currentPort)
+    myAWSIoTMQTTShadowClient.configureEndpoint(currentHost, currentPort)
     try:
+        # Connect to AWS IoT
+        myAWSIoTMQTTShadowClient.connect()
         myAWSIoTMQTTClient.connect()
         connected = True
         break
@@ -150,6 +166,8 @@ for connectivityInfo in coreInfo.connectivityInfoList:
         print("Error in connect!")
         print("Type: %s" % str(type(e)))
         print("Error message: %s" % e.message)
+        traceback.print_exc()
+
 
 if not connected:
     print("Cannot connect to core %s. Exiting..." % coreInfo.coreThingArn)
