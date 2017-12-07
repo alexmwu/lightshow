@@ -9,7 +9,8 @@
 # Author: Paul Dunn (dunnsept@gmail.com)
 # Author: Tom Enos (tomslick.ca@gmail.com)
 
-"""Play any audio file and synchronize lights to the music
+"""
+Play any audio file and synchronize lights to the music
 
 When executed, this script will play an audio file, as well as turn on
 and off N channels of lights to the music (by default the first 8 GPIO
@@ -93,14 +94,53 @@ import fft
 from prepostshow import PrePostShow
 import RunningStats
 
+import hardware_controller
+
+hc = hardware_controller.Hardware()
+
+# get copy of configuration manager
+cm = hc.cm
+
 # BEGIN RGB LED strip code
 import RPi.GPIO as GPIO
 from bootstrap import * # LPD8806 LED string stuff
 
-led_array = [0 for i in range(LED_COUNT)]
+# displays numbers of columns
+NUM_PINS = cm.hardware.physical_gpio_len
+# int division (e.g., 49 / 8 = 6 columns; 49 / 5 = 9)
+LIGHTS_PER_COL = LED_COUNT/NUM_PINS
+# tune this to get it the spectrum analyzer to have different levels (<1 makes avg height smaller >1 bigger)
+SPECTRAL_HEIGHT = .75
+
 c = 0.0
-columns = [1.0,1.0,1.0,1.0,1.0]
+columns = [1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]
 decay = .9
+
+def wheel_color(position):
+    """Get color from wheel value (0 - 384)."""
+    if position < 0:
+        position = 0
+    if position > 384:
+        position = 384
+
+    if position < 128:
+        r = 127 - position % 128
+        g = position % 128
+        b = 0
+    elif position < 256:
+        g = 127 - position % 128
+        b = position % 128
+        r = 0
+    else:
+        b = 127 - position % 128
+        r = position % 128
+        g = 0
+
+    return Color(r, g, b)
+
+def blackout():
+    for i in range(0, LED_COUNT):
+        strip.setPixelColor(i, Color(0, 0, 0))
 
 def display_strip(start_idx, end_idx, color = Color(50, 50, 0)):
     for i in range(start_idx, end_idx):
@@ -109,9 +149,16 @@ def display_strip(start_idx, end_idx, color = Color(50, 50, 0)):
 # this writes out light and color information to a continuous RGB LED
 # strip that's been wrapped around into 5 columns.
 # numbers comes in at 9-15 ish
-def display_column(col=0,height=0.0,color=Color(50,50,0)):
+# column indices assume the strip index 0 is the beginning of column 0
+# this means the the strip index 2 * LIGHTS_PER_COL - 1 is the beginning of column 1
+# and the end of column 1 is LIGHTS_PER_COL
+# 2 * LIGHTS_PER_COL is beginning of column 2
+def display_column(col=0, height=0.0, color=Color(50,50,0)):
     global c
     global columns
+    global LIGHTS_PER_COL
+    global SPECTRAL_HEIGHT
+
     color = wheel_color(int(c))
     c = c + .1
     if c > 384:
@@ -122,12 +169,24 @@ def display_column(col=0,height=0.0,color=Color(50,50,0)):
         height = .05
     elif height > 1.0:
         height = 1.0
-
     if height < columns[col]:
         columns[col] = columns[col] * decay
         height = columns[col]
     else:
         columns[col] = height
+
+    start = col * LIGHTS_PER_COL
+    # round to the nearest int the freq height times column height times
+    # user-defined avg spectral height, and take the max of that and col lights
+    level = int(round(height * LIGHTS_PER_COL * SPECTRAL_HEIGHT))
+
+    # if odd, flip it
+    if col % 2 == 1:
+        end = start + LIGHTS_PER_COL - 1
+        start = end - level
+        level = level + 1
+    
+    display_strip(start, start + level, color)
 # END RGB LED strip code
 
 # Make sure SYNCHRONIZED_LIGHTS_HOME environment variable is set
@@ -173,17 +232,9 @@ log.basicConfig(filename=LOG_DIR + '/music_and_lights.play.dbg',
 level = levels.get(parser.parse_args().log.upper())
 log.getLogger().setLevel(level)
 
-# import hardware_controller
-import hardware_controller
-
-hc = hardware_controller.Hardware()
-
-# get copy of configuration manager
-cm = hc.cm
 
 parser.set_defaults(playlist=cm.lightshow.playlist_path)
 args = parser.parse_args()
-
 
 class Lightshow(object):
     def __init__(self):
@@ -315,9 +366,9 @@ class Lightshow(object):
 
             for led_instance in hc.led:
                 led_instance.write_all(leds)
-        print 'LED stuff'
-        print matrix
-        display_strip(0, matrix)
+        blackout()
+        for i, val in enumerate(matrix):
+            display_column(i, matrix[i])
         # send out data to RGB LED Strip
         strip.show()
 
@@ -776,12 +827,12 @@ class Lightshow(object):
                 if 0 < play_now <= len(songs):
                     current_song = songs[play_now - 1]
                 # Get random song
-            elif cm.lightshow.randomize_playlist:
-                current_song = songs[random.randrange(0, len(songs))]
+                elif cm.lightshow.randomize_playlist:
+                    current_song = songs[random.randrange(0, len(songs))]
                 # Play next song in the lineup
-            else:
-                if not (song_to_play <= len(songs) - 1):
-                    song_to_play = 0
+                else:
+                    if not (song_to_play <= len(songs) - 1):
+                        song_to_play = 0
 
                     current_song = songs[song_to_play]
 
@@ -987,7 +1038,6 @@ class Lightshow(object):
             queue.put(line)
         out.close()
 
-
 if __name__ == "__main__":
     lightshow = Lightshow()
 
@@ -1004,9 +1054,4 @@ if __name__ == "__main__":
 
     else:
         lightshow.play_song()
-        # cleanup SPI
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(LED_PIN, GPIO.OUT)
-        GPIO.output(LED_PIN, 0)
-        GPIO.cleanup()
 
