@@ -49,3 +49,4 @@ Install these libraries first:
 * remember to include __init__.py if you want to use synchronized_lights_led_strip.py as a library
 * ensure Greengrass has local resource access
 * set the SYNCHRONIZED_LIGHTS_HOME env variable to the lightshowpi install directory in your lambda function
+* remember to use chgrp, chmod, chown to fix docker permissions issues
